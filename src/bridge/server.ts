@@ -1,4 +1,4 @@
-// HTTP của bridge. Cloudflare Tunnel chỉ mở hai đường ra Internet:
+// HTTP của bridge. Cloudflare Tunnel mở webhook, MCP và OAuth ra Internet:
 //   POST /tg/webhook   — Telegram đẩy update (kiểm tra X-Telegram-Bot-Api-Secret-Token)
 //   POST /mcp          — Claude custom connector (Authorization: Bearer <MCP_TOKEN>)
 // GET /healthz chỉ dùng nội bộ.
@@ -19,6 +19,7 @@ import type { JobManager } from './jobs/manager.ts';
 import { buildJobMcpServer } from './jobs/tools.ts';
 import { mountUi, type UiOptions } from './ui/routes.ts';
 import { logger } from '../shared/log.ts';
+import { mountOAuth } from './oauth.ts';
 
 const log = logger('bridge-http');
 
@@ -122,6 +123,7 @@ async function handleClaudeButton(d: BridgeDeps, u: TgUpdate): Promise<void> {
 export function buildBridgeApp(d: BridgeDeps) {
   const app = express();
   app.disable('x-powered-by');
+  const oauth = mountOAuth(app, d.cfg, d.store.db);
 
   // ---- Telegram webhook ----
   app.post('/tg/webhook', express.json({ limit: '2mb' }), async (req, res) => {
@@ -142,10 +144,14 @@ export function buildBridgeApp(d: BridgeDeps) {
   });
 
   // ---- MCP ----
-  const bearerOk = (req: express.Request): boolean => {
+  const bearerOk = async (req: express.Request): Promise<boolean> => {
     const h = req.header('authorization') ?? '';
     const m = /^Bearer\s+(.+)$/i.exec(h);
-    return !!m && safeEqual(m[1].trim(), d.cfg.mcpToken);
+    if (!m) return false;
+    const token = m[1].trim();
+    if (safeEqual(token, d.cfg.mcpToken)) return true;
+    if (!oauth) return false;
+    try { await oauth.verifyAccessToken(token); return true; } catch { return false; }
   };
   const mcpHandler = async (req: express.Request, res: express.Response) => {
     const server = buildMcpServer(d);
@@ -162,19 +168,22 @@ export function buildBridgeApp(d: BridgeDeps) {
       if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null });
     }
   };
-  const deny = (res: express.Response) => res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
+  const deny = (res: express.Response) => {
+    if (oauth) res.set('WWW-Authenticate', `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource/mcp', oauth.issuer).href}", scope="mcp"`);
+    return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
+  };
   const notAllowed = (_req: express.Request, res: express.Response) =>
     res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed (stateless server)' }, id: null });
 
-  app.post('/mcp', express.json({ limit: '16mb' }), (req, res) => {
-    if (!bearerOk(req)) {
+  app.post('/mcp', express.json({ limit: '16mb' }), async (req, res) => {
+    if (!(await bearerOk(req))) {
       log.warn(`Từ chối /mcp: token sai hoặc thiếu (${req.ip})`);
       return deny(res);
     }
     void mcpHandler(req, res);
   });
-  app.get('/mcp', (req, res) => (bearerOk(req) ? notAllowed(req, res) : deny(res)));
-  app.delete('/mcp', (req, res) => (bearerOk(req) ? notAllowed(req, res) : deny(res)));
+  app.get('/mcp', async (req, res) => ((await bearerOk(req)) ? notAllowed(req, res) : deny(res)));
+  app.delete('/mcp', async (req, res) => ((await bearerOk(req)) ? notAllowed(req, res) : deny(res)));
 
   if (d.cfg.mcpAllowPathToken) {
     // Dự phòng khi connector không gửi được header: https://<bridge>/mcp/<MCP_TOKEN>

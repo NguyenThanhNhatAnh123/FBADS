@@ -1,4 +1,4 @@
-# Cloudflare Tunnel: chỉ mở đúng hai đường của bridge ra Internet.
+# Cloudflare Tunnel: mở webhook, MCP, OAuth và health check; chặn UI/Agent.
 # Đặt ở C:\Users\<user>\.cloudflared\config.yml (hoặc thêm vào tunnel đang có), rồi:
 #   cloudflared tunnel route dns <tên-tunnel> bridge.example.com
 #   cloudflared service install   (chạy như dịch vụ Windows)
@@ -11,6 +11,9 @@ ingress:
     service: http://127.0.0.1:8787
   - hostname: bridge.example.com
     path: ^/mcp(/.*)?$
+    service: http://127.0.0.1:8787
+  - hostname: bridge.example.com
+    path: ^/(\.well-known/(oauth-authorization-server|oauth-protected-resource(/mcp)?)|authorize|register|token|revoke|oauth/approve|healthz)$
     service: http://127.0.0.1:8787
   # Mọi đường khác của hostname bridge → 404. Agent (cổng 8788) KHÔNG được trỏ ra ngoài.
   - hostname: bridge.example.com

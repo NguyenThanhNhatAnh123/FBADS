@@ -4,7 +4,7 @@ Hai tiến trình Node.js/TypeScript chạy trên server Windows văn phòng, th
 
 | Tiến trình | Việc | Mở ra Internet |
 | --- | --- | --- |
-| **bridge** (`src/bridge`) | Giữ bot Telegram (webhook), chuyển brief / nút `ag:` sang Agent ngay lập tức, lưu tin tự do + nút `cl:` cho Claude, mở 8 tool MCP cho custom connector claude.ai | Có — đúng 2 đường `/tg/webhook`, `/mcp` qua Cloudflare Tunnel |
+| **bridge** (`src/bridge`) | Giữ bot Telegram (webhook), chuyển brief / nút `ag:` sang Agent ngay lập tức, lưu tin tự do + nút `cl:` cho Claude, mở 8 tool MCP cho custom connector claude.ai | Có — `/tg/webhook`, `/mcp` và các endpoint OAuth qua Cloudflare Tunnel |
 | **agent** (`src/agent`) | Nhận brief `#NEW` / `#ADD`, dựng creative → Post ID → campaign → adset → ad ở trạng thái **PAUSED** trên H3, gửi tin duyệt, chỉ bật khi chủ shop bấm **Duyệt & chạy** | Không — chỉ nghe `127.0.0.1` |
 
 ```
@@ -108,10 +108,10 @@ Trên máy chỉ có: token bot Telegram + `MCP_TOKEN` / `BRIDGE_KEY` / `TG_WEBH
    ```
    pm2 không tự khởi động cùng Windows: cài thêm `pm2-installer` (chạy pm2 như Windows service) hoặc dùng NSSM bọc lệnh `pm2 resurrect`.
 7. **Webhook**: bridge tự gọi `setWebhook` khi khởi động nếu có `BRIDGE_PUBLIC_URL`. Có thể chạy tay và tự thử request giả: `npm run set-webhook`.
-8. **Custom connector trên claude.ai**: *Customize → Connectors* (https://claude.ai/customize/connectors) → **+ Add** → **Add custom connector**. Gói Team/Enterprise: Owner thêm ở *Organization settings → Connectors* trước. Ở mục Authentication, chọn **No sign in**.
-   - Nếu thấy mục **Request headers**: header `authorization`, giá trị `Bearer <MCP_TOKEN>` (phải tự gõ chữ `Bearer `). URL là `https://<tên-miền-bridge>/mcp`.
-   - Nếu không thấy mục đó (Request headers đang beta, chỉ một số tổ chức có): đặt `MCP_ALLOW_PATH_TOKEN=1` trong `.env.bridge`, khởi động lại bridge, rồi dùng URL `https://<tên-miền-bridge>/mcp/<MCP_TOKEN>`. URL này là mật khẩu, đừng dán ở đâu khác.
-   - Thiết lập xác thực không sửa được sau khi thêm. Muốn đổi token: sửa `MCP_TOKEN`, xoá connector rồi thêm lại.
+8. **Custom connector trên claude.ai**: *Customize → Connectors* (https://claude.ai/customize/connectors) → **+ Add** → **Add custom connector**. Gói Team/Enterprise: Owner thêm ở *Organization settings → Connectors* trước. Dùng URL `https://<tên-miền-bridge>/mcp`, chọn OAuth, để trống Client ID / Client Secret cho đăng ký tự động.
+   - Bridge hỗ trợ DCR và CIMD của Claude, authorization code + PKCE S256. Trang xác nhận trên chính tên miền bridge yêu cầu `MCP_TOKEN` từ `.env.bridge` của chủ shop; đăng ký client riêng chưa cấp quyền truy cập.
+   - `BRIDGE_PUBLIC_URL` phải là HTTPS origin. Tunnel cần mở cả các endpoint OAuth trong `deploy/cloudflared-config.example.yml`. Xem [OAuth và xử lý lỗi connector](docs/mcp-oauth.md).
+   - Các client dùng header vẫn có thể gửi `Authorization: Bearer <MCP_TOKEN>`. Cơ chế path token cũ chỉ bật khi thật sự cần (`MCP_ALLOW_PATH_TOKEN=1`); URL chứa token là mật khẩu.
    - Trong một chat: nút **+** → *Connectors* → bật connector, rồi bảo Claude "gọi get_status".
    - **Claude Desktop trên chính server này** không cần tunnel: `scripts/mcp-stdio.ts` chuyển stdio → `http://127.0.0.1:8787/mcp` và tự đọc `MCP_TOKEN` từ `.env.bridge`. Khai báo trong `%APPDATA%\Claude\claude_desktop_config.json`:
      ```json
@@ -156,7 +156,7 @@ npm run typecheck
 npm test
 ```
 
-87 test, chạy với Telegram / Meta Graph API / Messages API giả lập trong bộ nhớ (ffmpeg thật), phủ hai checklist nghiệm thu và chế độ `BRIEF_HANDLER=claude`:
+109 test, chạy với Telegram / Meta Graph API / Messages API giả lập trong bộ nhớ (ffmpeg thật), phủ OAuth, hai checklist nghiệm thu và chế độ `BRIEF_HANDLER=claude`:
 
 | Checklist | Test |
 | --- | --- |
@@ -182,7 +182,7 @@ Mục "Copy của 10 brief thử không chứa từ cấm" và "Scheduled task c
 - **`GET /billing`** đọc `balance`, `amount_spent`, `spend_cap` của ad account và edge `adspaymentcycle` cho ngưỡng thanh toán — tên trường ngưỡng cần đối chiếu tài liệu Marketing API trước khi bật task cảnh báo.
 - **Shopify**: từ 01/01/2026 không tạo được custom app kiểu cũ trong admin; app mới ở Dev Dashboard dùng client credentials (token 24 giờ) — Agent hỗ trợ cả hai cách.
 - **Sao lưu DB lên Drive**: service account không có dung lượng My Drive → thư mục đích phải nằm trong Shared Drive. Bản sao lưu trên máy (`data/backups`, giữ 14 ngày) luôn chạy.
-- Custom connector claude.ai: mục *Request headers* đang beta, chỉ một số tổ chức có. Nếu không có, dùng `MCP_ALLOW_PATH_TOKEN`. Scheduled task có gọi được custom connector hay không thì tài liệu chưa nói, cần chạy thử một lần.
+- Custom connector claude.ai: dùng OAuth với DCR/CIMD (xem `docs/mcp-oauth.md`). Scheduled task có gọi được custom connector hay không cần chạy thử một lần.
 
 ## Cấu trúc
 
