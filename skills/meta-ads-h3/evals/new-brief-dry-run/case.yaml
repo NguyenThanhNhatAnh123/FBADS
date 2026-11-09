@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: new-brief-dry-run
+expected_outcome: |
+  Chạy thử: đọc sản phẩm Shopify car-floor-mats-00 và file Drive 33.png, viết 2 phương án copy tiếng Anh đúng quy tắc
+  (không từ cấm), trình bản duyệt dạng "🟡 CHỜ DUYỆT" với camp "Dân - Auto - Dreamcatcher Car Mats - 09/11/2026",
+  budget $20/ngày, ghi rõ là chạy thử, không gọi tool nào ghi lên Meta / Shopify, và gửi báo cáo 🧪 CHẠY THỬ lên Telegram.

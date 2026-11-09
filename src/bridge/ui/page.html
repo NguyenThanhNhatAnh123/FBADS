@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot quảng cáo · Quản lý</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #677085; --line: #e3e6ec;
+    --blue: #2563eb; --green: #15803d; --amber: #b45309; --red: #b91c1c; --violet: #6d28d9; --gray: #6b7280;
+    --blue-bg: #e8efff; --green-bg: #e7f6ec; --amber-bg: #fdf3e2; --red-bg: #fdeaea; --violet-bg: #f1eafe; --gray-bg: #eef0f3;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Cascadia Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11141a; --card: #1a1f28; --text: #e6e9ef; --muted: #98a1b3; --line: #2a313d;
+      --blue: #7aa2ff; --green: #5fd38b; --amber: #f2b45a; --red: #ff7b7b; --violet: #b99cff; --gray: #a0a7b4;
+      --blue-bg: #1e2a44; --green-bg: #17301f; --amber-bg: #3a2c15; --red-bg: #3d1d1d; --violet-bg: #2b2242; --gray-bg: #262c36;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header .sp { flex: 1; }
+  main { max-width: 1180px; margin: 0 auto; padding: 16px 20px 40px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .big { font-size: 16px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .blue { color: var(--blue); background: var(--blue-bg); } .green { color: var(--green); background: var(--green-bg); }
+  .amber { color: var(--amber); background: var(--amber-bg); } .red { color: var(--red); background: var(--red-bg); }
+  .violet { color: var(--violet); background: var(--violet-bg); } .gray { color: var(--gray); background: var(--gray-bg); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .dot.ok { background: var(--green); } .dot.bad { background: var(--red); } .dot.wait { background: var(--amber); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--blue); }
+  button:disabled { opacity: .5; cursor: progress; }
+  button.danger { color: var(--red); border-color: var(--red); }
+  button.primary { color: #fff; background: var(--blue); border-color: var(--blue); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  pre { font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow: auto; margin: 6px 0; }
+  .section { margin-top: 18px; }
+  .section > h2 { font-size: 15px; margin: 0 0 8px; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); width: min(980px, 96vw); max-height: 90vh; padding: 0; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg-head { position: sticky; top: 0; background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; gap: 10px; align-items: center; }
+  .dlg-body { padding: 4px 16px 16px; }
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; }
+  .warn { color: var(--red); }
+  .empty { padding: 20px; text-align: center; color: var(--muted); }
+  .mode-real { color: #fff; background: var(--red); }
+  .mode-dry { color: var(--violet); background: var(--violet-bg); }
+  @media (max-width: 640px) { .hide-sm { display: none; } .kv { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bot quảng cáo · Quản lý</h1>
+  <span id="mode" class="pill gray">…</span>
+  <span class="sp"></span>
+  <span id="refreshed" class="muted small"></span>
+</header>
+<main>
+  <div class="grid" id="cards"></div>
+
+  <div class="row">
+    <button id="btn-claude">Kiểm tra lại Claude &amp; connector</button>
+    <button id="btn-doctor">Chạy kiểm tra máy (doctor)</button>
+    <button id="btn-doctor-live" title="Thêm một lượt claude -p chỉ đọc qua connector Facebook Ads">Doctor + thử claude -p</button>
+    <span class="sp"></span>
+    <button id="btn-mode"></button>
+  </div>
+  <pre id="doctor-out" hidden></pre>
+
+  <div class="section">
+    <h2>Brief gần đây</h2>
+    <div class="card" style="padding:0">
+      <table>
+        <thead><tr><th>#</th><th>Brief</th><th>Trạng thái</th><th class="hide-sm">Lượt</th><th class="hide-sm">Chi phí (quy đổi)</th><th class="hide-sm">Cập nhật</th></tr></thead>
+        <tbody id="briefs"><tr><td colspan="6" class="empty">Đang tải…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section card small muted">
+    <b>Khi bot báo phiên Claude hết hạn:</b> mở PowerShell trên máy này, chạy <code>claude</code>, gõ <code>/login</code>, đăng nhập tài khoản claude.ai của shop, rồi <code>/exit</code>.
+    · Bridge chạy nền bằng pm2: <code>pm2 ls</code>, <code>pm2 logs bridge</code>, <code>pm2 restart bridge</code>.
+    · Trang này chỉ mở được trên chính máy chạy bridge.
+  </div>
+</main>
+
+<dialog id="dlg">
+  <div class="dlg-head"><b id="dlg-title"></b><span id="dlg-status"></span><span class="sp" style="flex:1"></span><button id="dlg-retry" hidden>Chạy lại</button><button id="dlg-close">Đóng</button></div>
+  <div class="dlg-body" id="dlg-body"></div>
+</dialog>
+
+<script>
+const TOKEN = '__UI_TOKEN__';
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return e;
+}
+async function api(path, opts = {}) {
+  try {
+    const r = await fetch('/ui/api' + path, { ...opts, headers: { 'x-ui-token': TOKEN, 'content-type': 'application/json' } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok && !j.error) j.error = 'HTTP ' + r.status;
+    if (!r.ok) j.ok = false;
+    return j;
+  } catch (e) { return { ok: false, error: 'Không kết nối được bridge: ' + e.message }; }
+}
+const fmtTime = (s) => s ? new Date(s).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '';
+const fmtUsd = (n) => n ? '$' + n.toFixed(2) : '—';
+const STATUS_CLASS = { pending_approval: 'amber', active: 'green', failed: 'red', rejected: 'red', cancelled: 'gray', running: 'blue', queued: 'blue', activating: 'blue', cancelling: 'blue', confirm: 'violet', choosing: 'violet' };
+const pill = (cls, text) => el('span', { class: 'pill ' + cls }, text);
+const dot = (state) => el('span', { class: 'dot ' + state });
+let state = null;
+
+function card(title, ...body) { return el('div', { class: 'card' }, el('h3', {}, title), ...body); }
+
+function renderStatus(s) {
+  state = s;
+  const mode = $('mode');
+  mode.className = 'pill ' + (s.dry_run ? 'mode-dry' : 'mode-real');
+  mode.textContent = s.dry_run ? '🧪 CHẠY THỬ — không đụng Meta' : '● CHẠY THẬT';
+  const bm = $('btn-mode');
+  bm.textContent = s.dry_run ? 'Chuyển sang CHẠY THẬT…' : 'Chuyển về CHẠY THỬ';
+  bm.className = s.dry_run ? 'danger' : 'primary';
+  $('refreshed').textContent = 'Cập nhật ' + new Date().toLocaleTimeString('vi-VN');
+
+  const c = s.claude || {};
+  const conn = c.connectors;
+  const connNodes = conn ? (conn.items.length ? conn.items.map((x) => el('div', { class: 'small' }, dot(x.ok ? 'ok' : 'bad'), x.name, x.ok ? '' : el('span', { class: 'muted' }, ' — ' + x.detail))) : [el('div', { class: 'small warn' }, conn.error || 'Không đọc được')]) : [el('div', { class: 'small muted' }, 'Đang kiểm tra…')];
+  const r = s.runner || {};
+  $('cards').replaceChildren(
+    card('Bot Telegram', el('div', { class: 'big' }, dot(s.bot?.ok ? 'ok' : 'bad'), s.bot?.ok ? '@' + s.bot.username : 'Lỗi'), el('div', { class: 'small muted' }, s.bot?.ok ? 'Bot trả lời bình thường' : s.bot?.error || '')),
+    card('Nhận tin', el('div', { class: 'big' }, dot(s.telegram?.ok ? 'ok' : 'bad'), s.telegram?.mode === 'polling' ? 'Polling' : 'Webhook'),
+      el('div', { class: 'small muted' }, s.telegram?.mode === 'polling' ? (s.telegram.ok ? 'Đang nhận tin · lần cuối ' + fmtTime(s.telegram.last_ok_at) : 'Không nhận được tin: ' + (s.telegram.last_error || '?')) : s.telegram?.url || '')),
+    card('Claude', el('div', { class: 'big' }, dot(conn && conn.items.length && conn.items.every((x) => x.ok) ? 'ok' : conn ? 'bad' : 'wait'), c.version ? c.version.replace(' (Claude Code)', '') : 'Claude Code'), ...connNodes, conn ? el('div', { class: 'small muted' }, 'kiểm tra lúc ' + fmtTime(conn.at)) : null),
+    card('Đang làm', el('div', { class: 'big' }, r.running ? '#' + r.running.brief + ' · ' + ({ create: 'dựng nháp', edit: 'sửa copy', activate: 'bật', cancel: 'huỷ' }[r.running.kind] || r.running.kind) : 'Rảnh'),
+      el('div', { class: 'small muted' }, r.running ? r.running.minutes + ' phút' + (r.queued_runs ? ' · hàng đợi ' + r.queued_runs : '') : r.queued_runs ? 'Hàng đợi ' + r.queued_runs + ' lượt' : 'Không có lượt chờ')),
+    card('Brief', el('div', { class: 'big' }, (s.counts?.pending_approval || 0) + ' chờ duyệt'), el('div', { class: 'small muted' }, (s.counts?.open || 0) + ' đang xử lý · ' + (s.counts?.failed || 0) + ' lỗi · ' + (s.counts?.active || 0) + ' đang chạy')),
+    card('Tài khoản', el('div', { class: 'big' }, s.account?.name || ''), el('div', { class: 'small muted' }, 'act_' + (s.account?.adAccountId || '') + ' · trần $' + (s.limits?.totalBudgetUsd || '') + '/ngày')),
+  );
+}
+
+function renderBriefs(items) {
+  const tb = $('briefs');
+  if (!items.length) return tb.replaceChildren(el('tr', {}, el('td', { colspan: 6, class: 'empty' }, 'Chưa có brief nào')));
+  tb.replaceChildren(...items.map((b) => el('tr', { onclick: () => openDetail(b.id) },
+    el('td', {}, '#' + b.id),
+    el('td', {}, b.title, b.dry ? ' ' : '', b.dry ? pill('violet', '🧪') : '', b.anomalies ? ' ' : '', b.anomalies ? pill('red', '⛔ ' + b.anomalies + ' bất thường') : '', b.error ? el('div', { class: 'small muted' }, b.error.slice(0, 140)) : ''),
+    el('td', {}, pill(STATUS_CLASS[b.status] || 'gray', b.status_label)),
+    el('td', { class: 'hide-sm' }, String(b.runs)),
+    el('td', { class: 'hide-sm' }, fmtUsd(b.cost_usd)),
+    el('td', { class: 'hide-sm muted small' }, fmtTime(b.updated_at)),
+  )));
+}
+
+let openId = null;
+async function openDetail(id) {
+  openId = id;
+  const dlg = $('dlg');
+  if (!dlg.open) dlg.showModal();
+  await loadDetail();
+}
+async function loadDetail(keepLogs) {
+  if (!openId) return;
+  const d = await api('/briefs/' + openId);
+  if (!d.ok) { $('dlg-body').replaceChildren(el('p', { class: 'warn' }, d.error)); return; }
+  const j = d.job;
+  $('dlg-title').textContent = 'Brief #' + j.id;
+  $('dlg-status').replaceChildren(pill(STATUS_CLASS[j.status] || 'gray', j.status_label));
+  const rb = $('dlg-retry');
+  rb.hidden = j.status !== 'failed';
+  rb.onclick = async () => { rb.disabled = true; const r = await api('/briefs/' + j.id + '/retry', { method: 'POST', body: '{}' }); rb.disabled = false; alertMsg(r.message || r.error); refresh(); loadDetail(); };
+  if (keepLogs) return;
+  const res = d.result;
+  const body = [];
+  if (j.error) body.push(el('p', { class: 'warn' }, j.error));
+  body.push(el('div', { class: 'kv small' },
+    el('span', { class: 'muted' }, 'Loại'), el('span', {}, '#' + j.type + (d.extra?.dry ? ' · 🧪 chạy thử' : '')),
+    el('span', { class: 'muted' }, 'Tạo lúc'), el('span', {}, fmtTime(j.created_at)),
+    res ? el('span', { class: 'muted' }, 'Campaign') : null, res ? el('span', {}, res.campaign.name + ' · ' + res.campaign.id + (res.campaign.existing ? ' (có sẵn)' : '')) : null,
+    res ? el('span', { class: 'muted' }, 'Adset') : null, res ? el('span', {}, res.adset.name + ' · ' + res.adset.id) : null,
+    res ? el('span', { class: 'muted' }, 'Ad') : null, res ? el('span', {}, res.ads.map((a) => a.name + ' (' + a.id + ')').join(' · ')) : null,
+  ));
+  body.push(el('h4', {}, 'Brief'), el('pre', {}, j.raw_text));
+  if (d.approval_text) body.push(el('h4', {}, 'Tin duyệt'), el('pre', {}, d.approval_text));
+  if (d.runs.length) {
+    body.push(el('h4', {}, 'Các lượt Claude'));
+    for (const r of d.runs) {
+      const a = r.audit;
+      const logBox = el('pre', { hidden: true });
+      body.push(el('div', { class: 'card', style: 'margin:6px 0' },
+        el('div', {}, el('b', {}, 'Lượt ' + r.id + ' · ' + r.kind), ' ', pill(r.status === 'done' ? 'green' : r.status === 'running' ? 'blue' : r.status === 'queued' ? 'gray' : 'red', r.outcome || r.status),
+          el('span', { class: 'muted small' }, '  ' + (r.num_turns ? r.num_turns + ' bước · ' : '') + fmtUsd(r.cost_usd) + ' · ' + fmtTime(r.started_at) + (r.finished_at ? ' → ' + fmtTime(r.finished_at) : ''))),
+        r.error ? el('div', { class: 'small warn' }, r.error) : null,
+        r.denials?.length ? el('div', { class: 'small warn' }, 'Tool bị chặn: ' + r.denials.join(', ')) : null,
+        a ? el('div', { class: 'small' }, a.found ? 'Soát nhật ký: ' + (a.writes.length ? a.writes.join(' · ') : 'không ghi dữ liệu') : el('span', { class: 'muted' }, 'Không đọc được nhật ký phiên')) : null,
+        a?.anomalies?.length ? el('div', { class: 'small warn' }, '⛔ ' + a.anomalies.join(' · ')) : null,
+        r.session_id ? el('div', { class: 'small muted' }, 'Mở lại: claude --resume ' + r.session_id + ' --fork-session') : null,
+        r.log_file ? el('button', { class: 'small', onclick: async (ev) => { ev.target.disabled = true; const lg = await api('/runs/' + r.id + '/log'); ev.target.disabled = false; logBox.hidden = false; logBox.textContent = lg.ok ? (lg.truncated ? '…(chỉ hiện phần cuối)\n' : '') + lg.text : lg.error; } }, 'Xem log') : null,
+        logBox,
+      ));
+    }
+  }
+  if (d.events.length) body.push(el('h4', {}, 'Lịch sử'), el('pre', {}, d.events.map((e) => fmtTime(e.at) + '  ' + e.actor.padEnd(6) + ' ' + e.action + (e.detail ? '  ' + e.detail.slice(0, 220) : '')).join('\n')));
+  $('dlg-body').replaceChildren(...body);
+}
+$('dlg-close').onclick = () => { openId = null; $('dlg').close(); };
+$('dlg').addEventListener('close', () => { openId = null; });
+
+function alertMsg(m) { if (m) window.alert(m); }
+
+async function refresh() {
+  const [s, b] = await Promise.all([api('/status'), api('/briefs?limit=60')]);
+  if (s.ok) renderStatus(s); else $('refreshed').textContent = '⚠ ' + s.error;
+  if (b.ok) renderBriefs(b.items);
+}
+
+$('btn-claude').onclick = async (ev) => { ev.target.disabled = true; ev.target.textContent = 'Đang kiểm tra (~10 giây)…'; await api('/claude/refresh', { method: 'POST', body: '{}' }); ev.target.disabled = false; ev.target.textContent = 'Kiểm tra lại Claude & connector'; refresh(); };
+async function doctor(live, btn) {
+  const out = $('doctor-out');
+  btn.disabled = true; out.hidden = false; out.textContent = live ? 'Đang chạy doctor + một lượt claude -p chỉ đọc (khoảng 30–60 giây)…' : 'Đang chạy doctor (khoảng 15 giây)…';
+  const r = await api('/doctor', { method: 'POST', body: JSON.stringify({ live }) });
+  btn.disabled = false;
+  out.textContent = r.output || r.error || '';
+}
+$('btn-doctor').onclick = (ev) => doctor(false, ev.target);
+$('btn-doctor-live').onclick = (ev) => doctor(true, ev.target);
+$('btn-mode').onclick = async () => {
+  if (!state) return;
+  let body;
+  if (state.dry_run) {
+    const typed = window.prompt('Chuyển sang CHẠY THẬT: brief mới sẽ tạo bản nháp THẬT trên Meta (chưa chạy, chưa tiêu tiền) và chỉ bật khi bạn bấm Duyệt trên Telegram.\n\nGõ đúng: CHẠY THẬT');
+    if (typed === null) return;
+    body = { on: false, confirm: typed.trim() };
+  } else {
+    if (!window.confirm('Chuyển về CHẠY THỬ? Brief mới sẽ không tạo / bật gì trên Meta.')) return;
+    body = { on: true };
+  }
+  const r = await api('/dry-run', { method: 'POST', body: JSON.stringify(body) });
+  if (!r.ok) alertMsg(r.error);
+  refresh();
+};
+
+refresh();
+setInterval(() => { refresh(); if (openId) loadDetail(true); }, 5000);
+</script>
+</body>
+</html>

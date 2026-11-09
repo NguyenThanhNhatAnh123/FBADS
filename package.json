@@ -1,0 +1,35 @@
+{
+  "name": "ads-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Meta Ads AI Agent (Giai đoạn 1) + MCP Telegram bridge cho tài khoản H3",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "agent": "node --env-file-if-exists=.env.agent src/agent/index.ts",
+    "bridge": "node --env-file-if-exists=.env.bridge src/bridge/index.ts",
+    "set-webhook": "node --env-file-if-exists=.env.bridge scripts/set-webhook.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.ts\"",
+    "preflight": "node --env-file-if-exists=.env.agent scripts/preflight.ts",
+    "chat-id": "node --env-file-if-exists=.env.bridge scripts/chat-id.ts",
+    "doctor": "node --env-file-if-exists=.env.bridge scripts/doctor.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@googleapis/drive": "^27.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.3.0",
+    "google-auth-library": "^11.3.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.3"
+  }
+}
