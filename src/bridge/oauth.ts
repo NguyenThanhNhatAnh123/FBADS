@@ -129,7 +129,8 @@ export class BridgeOAuth implements OAuthServerProvider {
     this.put('pending', hash(pending), { client, params, attempts: 0 }, now() + 600);
     // no-referrer also makes browser form POSTs send Origin:null. Send only the
     // origin (never the authorization query) so same-origin consent can pass.
-    res.set({ 'Content-Security-Policy': "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'", 'Referrer-Policy': 'origin', 'X-Content-Type-Options': 'nosniff' });
+    // Chrome applies form-action to redirects as well as the initial form POST.
+    res.set({ 'Content-Security-Policy': `default-src 'none'; form-action 'self' ${[...CALLBACKS].join(' ')}; frame-ancestors 'none'; base-uri 'none'`, 'Referrer-Policy': 'origin', 'X-Content-Type-Options': 'nosniff' });
     res.type('html').send(`<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Kết nối ADS</title>
       <h1>Cho phép Claude kết nối ADS</h1><p>Ứng dụng: ${html(client.client_name ?? 'Claude')}</p>
       <p>Quyền: đọc hộp thư và sử dụng các công cụ Telegram của ADS.</p>

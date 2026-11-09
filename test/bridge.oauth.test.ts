@@ -104,6 +104,7 @@ test('OAuth full flow: owner consent, PKCE, client/redirect/resource binding, re
     const page = await authorize.text();
     assert.ok(!page.includes(OWNER_TOKEN));
     assert.match(authorize.headers.get('content-security-policy')!, /frame-ancestors 'none'/);
+    assert.ok(authorize.headers.get('content-security-policy')!.includes("form-action 'self' " + CALLBACK), 'allow Chrome to follow the form redirect to Claude');
     assert.equal(authorize.headers.get('referrer-policy'), 'origin', 'HTML form submissions must preserve their Origin header');
     const request = /name="request" value="([^"]+)"/.exec(page)![1];
     assert.equal((await h.request('/oauth/approve', form({ request, decision: 'approve', owner_token: OWNER_TOKEN }, 'https://evil.example'))).status, 403);
