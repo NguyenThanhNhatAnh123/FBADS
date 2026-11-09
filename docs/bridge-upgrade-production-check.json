@@ -1,0 +1,41 @@
+{
+  "source": "locally generated fixtures; no real Drive file supplied",
+  "dry_run": true,
+  "media": [
+    {
+      "kind": "png",
+      "head": 200,
+      "mime": "image/png",
+      "contentLength": 468,
+      "acceptRanges": "bytes",
+      "range": 206,
+      "width": 160,
+      "height": 160
+    },
+    {
+      "kind": "mp4",
+      "head": 200,
+      "mime": "video/mp4",
+      "contentLength": 2180,
+      "acceptRanges": "bytes",
+      "range": 206,
+      "width": 160,
+      "height": 320
+    }
+  ],
+  "schema_count": 9,
+  "robots": 200,
+  "invalid_token": 404,
+  "expired_token": 410,
+  "status": {
+    "bot": true,
+    "webhook": true,
+    "handler": true,
+    "mode": "claude",
+    "private_files_supported": false
+  },
+  "billing": {
+    "isError": true,
+    "error": "not_configured"
+  }
+}

@@ -105,10 +105,12 @@ Claude xử lý lựa chọn rồi gọi `mark_handled({"ids":["b3"]})`; output 
 
 | Mục | Kết quả và giới hạn |
 | --- | --- |
-| 1. MP4 từ Drive, URL HEAD 200 | Tải từ nguồn Drive giả lập → MP4 thật, ffprobe thật; HEAD/GET/Range đã đạt. Chưa có file Drive thật được cung cấp để thử toàn tuyến. |
-| 2. PNG từ Drive | Nguồn giả lập → PNG thật, metadata và HTTP đã đạt. Cùng giới hạn file Drive thật ở mục 1. |
-| 3. robots.txt | Có route cho phép /media/; kiểm thử HTTP đạt. Kiểm tra thêm trên tên miền sau deploy. |
-| 4. Token sai/hết hạn | 404/410, Range không hợp lệ 416, xoá file hết hạn, giữ file còn hạn: đã đạt. |
-| 5. Billing chế độ claude | MCP + Graph giả lập trả đủ field và che số thẻ: đạt. Thực tế sẽ báo not_configured do chủ shop chưa có META_READ_TOKEN. |
+| 1. MP4 từ Drive, URL HEAD 200 | Tải từ nguồn Drive giả lập → MP4 thật, ffprobe thật; HEAD/GET/Range đã đạt; trên tên miền thật HEAD 200, video/mp4 và Range 206 đã xác nhận bằng fixture tạo trên máy. Chưa có file Drive thật được cung cấp để thử toàn tuyến. |
+| 2. PNG từ Drive | Nguồn giả lập → PNG thật, metadata và HTTP đã đạt; production HEAD 200, image/png, Content-Length và Range 206 đúng. Cùng giới hạn file Drive thật ở mục 1. |
+| 3. robots.txt | Production /robots.txt trả 200 và cho phép /media/. |
+| 4. Token sai/hết hạn | Production token sai 404, hết hạn 410 đã xác nhận; kiểm thử còn phủ Range không hợp lệ 416, xoá file hết hạn và giữ file còn hạn. |
+| 5. Billing chế độ claude | MCP + Graph giả lập trả đủ field và che số thẻ: đạt. MCP production đã xác nhận isError=true, error=not_configured do chưa có META_READ_TOKEN. |
 | 6. Brief thử | Webhook giả lập qua cùng router/job manager lưu và chuyển đúng; không thêm list_briefs theo nhánh cho phép. mark_handled không xử lý nhầm ID brief. Không gửi brief giả vào chat thật. |
-| 7. get_status | Bot/webhook/handler Claude qua MCP đã kiểm thử. Kiểm tra lại trên production sau deploy. |
+| 7. get_status | MCP production đã xác nhận bot.ok=true, webhook.ok=true, agent.ok=true, mode=claude. |
+
+TypeScript và toàn bộ **119 test** đạt. Bản [kết quả production đã loại thông tin nhạy cảm](bridge-upgrade-production-check.json) ghi rõ nguồn fixture giả lập Drive; không có link/token media, không có số dư H3 giả. Cache thử đã được thu hồi/xoá. Chế độ production vẫn `CLAUDE_DRY_RUN=1`.
