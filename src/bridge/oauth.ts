@@ -127,7 +127,9 @@ export class BridgeOAuth implements OAuthServerProvider {
     if (!/^[A-Za-z0-9_-]{43}$/.test(params.codeChallenge)) throw new InvalidGrantError('A valid S256 PKCE challenge is required');
     const pending = secret();
     this.put('pending', hash(pending), { client, params, attempts: 0 }, now() + 600);
-    res.set({ 'Content-Security-Policy': "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'", 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' });
+    // no-referrer also makes browser form POSTs send Origin:null. Send only the
+    // origin (never the authorization query) so same-origin consent can pass.
+    res.set({ 'Content-Security-Policy': "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'", 'Referrer-Policy': 'origin', 'X-Content-Type-Options': 'nosniff' });
     res.type('html').send(`<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Kết nối ADS</title>
       <h1>Cho phép Claude kết nối ADS</h1><p>Ứng dụng: ${html(client.client_name ?? 'Claude')}</p>
       <p>Quyền: đọc hộp thư và sử dụng các công cụ Telegram của ADS.</p>
@@ -139,7 +141,10 @@ export class BridgeOAuth implements OAuthServerProvider {
 
   approve(req: express.Request, res: express.Response): void {
     res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
-    if (req.header('origin') !== this.issuer.origin) { res.status(403).json({ error: 'access_denied' }); return; }
+    if (req.header('origin') !== this.issuer.origin) {
+      log.warn('Consent origin rejected', { origin: req.header('origin') ?? '(missing)' });
+      res.status(403).json({ error: 'access_denied', error_description: 'Consent must be submitted from the ADS authorization page; reconnect from Claude' }); return;
+    }
     const id = typeof req.body?.request === 'string' ? hash(req.body.request) : '';
     const pending = this.get<Pending>('pending', id);
     if (!pending) { res.status(400).json({ error: 'invalid_request', error_description: 'Authorization request expired; reconnect from Claude' }); return; }
