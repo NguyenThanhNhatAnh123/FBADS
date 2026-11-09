@@ -20,6 +20,8 @@ import { buildJobMcpServer } from './jobs/tools.ts';
 import { mountUi, type UiOptions } from './ui/routes.ts';
 import { logger } from '../shared/log.ts';
 import { mountOAuth } from './oauth.ts';
+import { StagedMedia, mountMedia } from './media.ts';
+import { ReadonlyBilling } from './billing.ts';
 
 const log = logger('bridge-http');
 
@@ -32,6 +34,8 @@ export interface BridgeDeps {
   polling?: PollingState; // chỉ có khi BRIDGE_POLLING=1
   jobs?: JobManager; // chỉ có khi BRIEF_HANDLER=claude
   ui?: UiOptions; // trang quản lý /ui (chỉ khi có jobs)
+  media?: StagedMedia;
+  billing?: ReadonlyBilling;
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -124,6 +128,9 @@ export function buildBridgeApp(d: BridgeDeps) {
   const app = express();
   app.disable('x-powered-by');
   const oauth = mountOAuth(app, d.cfg, d.store.db);
+  const media = d.media ?? new StagedMedia(d.cfg.media ?? { publicUrl: d.cfg.publicUrl, dir: 'data/staged-media', serviceAccountJson: '', ffprobePath: 'ffprobe', maxCacheBytes: 5_000_000_000 }, d.store.db);
+  const billing = d.billing ?? new ReadonlyBilling(d.cfg.billing ?? { token: '', apiVersion: 'v26.0' });
+  mountMedia(app, media);
 
   // ---- Telegram webhook ----
   app.post('/tg/webhook', express.json({ limit: '2mb' }), async (req, res) => {
@@ -154,7 +161,7 @@ export function buildBridgeApp(d: BridgeDeps) {
     try { await oauth.verifyAccessToken(token); return true; } catch { return false; }
   };
   const mcpHandler = async (req: express.Request, res: express.Response) => {
-    const server = buildMcpServer(d);
+    const server = buildMcpServer({ ...d, media, billing });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => {
       void transport.close();

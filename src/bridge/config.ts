@@ -1,10 +1,14 @@
 import { EnvReader } from '../shared/env.ts';
 import { loadJobsConfig, type ClaudeJobsConfig } from './jobs/config.ts';
+import type { MediaConfig } from './media.ts';
+import type { BillingConfig } from './billing.ts';
 
 export interface BridgeConfig {
   /** agent (mặc định): chuyển brief sang Agent dùng key; claude: bridge tự chạy `claude -p` với connector claude.ai. */
   briefHandler?: 'agent' | 'claude';
   jobs?: ClaudeJobsConfig; // có khi briefHandler = 'claude'
+  media?: MediaConfig;
+  billing?: BillingConfig;
   port: number;
   host: string;
   publicUrl: string; // https://<tên-miền-bridge>, dùng cho setWebhook
@@ -29,6 +33,14 @@ export function loadBridgeConfig(env: NodeJS.ProcessEnv = process.env): BridgeCo
   const e = new EnvReader(env);
   const allowed = e.list('TG_ALLOWED_CHAT_IDS').map(Number).filter(Number.isFinite);
   const cfg: BridgeConfig = {
+    media: {
+      publicUrl: e.opt('BRIDGE_PUBLIC_URL').replace(/\/$/, ''),
+      dir: e.opt('MEDIA_CACHE_DIR', 'data/staged-media'),
+      serviceAccountJson: e.opt('DRIVE_SERVICE_ACCOUNT_JSON', e.opt('GOOGLE_SA_JSON')),
+      ffprobePath: e.opt('FFPROBE_PATH', 'ffprobe'),
+      maxCacheBytes: e.num('MEDIA_CACHE_MAX_BYTES', 5_000_000_000),
+    },
+    billing: { token: e.opt('META_READ_TOKEN'), apiVersion: e.opt('META_API_VERSION', 'v26.0') },
     port: e.num('BRIDGE_PORT', 8787),
     host: e.opt('BRIDGE_HOST', '127.0.0.1'),
     publicUrl: e.opt('BRIDGE_PUBLIC_URL').replace(/\/$/, ''),
@@ -59,6 +71,8 @@ export function loadBridgeConfig(env: NodeJS.ProcessEnv = process.env): BridgeCo
   }
   if (cfg.bridgeKey && cfg.bridgeKey.length < 24) e.invalid.push('BRIDGE_KEY phải dài tối thiểu 24 ký tự');
   if (cfg.ownerChatId && !allowed.includes(cfg.ownerChatId)) e.invalid.push('TG_OWNER_CHAT_ID phải nằm trong TG_ALLOWED_CHAT_IDS');
+  if (cfg.media && (!Number.isSafeInteger(cfg.media.maxCacheBytes) || cfg.media.maxCacheBytes < 1_000_000_000)) e.invalid.push('MEDIA_CACHE_MAX_BYTES phải là số nguyên tối thiểu 1000000000');
+  if (cfg.billing && !/^v\d+\.\d+$/.test(cfg.billing.apiVersion)) e.invalid.push('META_API_VERSION phải dạng v26.0');
   e.assertOk('bridge');
   return cfg;
 }

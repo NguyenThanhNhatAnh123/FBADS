@@ -39,6 +39,7 @@ import {
 } from './validate.ts';
 import type { CopyVariant } from '../../agent/copy/rules.ts';
 import { logger } from '../../shared/log.ts';
+import { MediaError, type StagedFile } from '../media.ts';
 
 const log = logger('jobs');
 
@@ -62,6 +63,7 @@ export interface JobManagerDeps {
   /** http://127.0.0.1:<port> — gốc URL /job-mcp/<token> cho tiến trình claude. */
   mcpBase: () => string;
   now?: () => Date;
+  stageMedia?: (fileId: string, ttlHours?: number) => Promise<StagedFile>;
 }
 
 const LIVE_OK = /^(ACTIVE|IN_PROCESS|WITH_ISSUES|PENDING_REVIEW|PREAPPROVED)$/i;
@@ -848,6 +850,13 @@ export class JobManager {
       queued_runs: this.d.jobs.queuedCount(),
       open_briefs: open.map((j) => ({ id: j.id, type: j.type, status: j.status })),
     };
+  }
+
+  async stageMedia(a: ActiveRun, fileId: string, ttlHours?: number): Promise<StagedFile> {
+    const job = this.d.jobs.getJob(a.jobId);
+    if (this.active !== a || a.kind !== 'create' || !job || this.isDry(job)) throw new MediaError('not_allowed', 'Chỉ lượt create chạy thật mới được stage media.');
+    if (!this.d.stageMedia) throw new MediaError('not_configured', 'Chưa cấu hình dịch vụ media.');
+    return this.d.stageMedia(fileId, ttlHours);
   }
 }
 

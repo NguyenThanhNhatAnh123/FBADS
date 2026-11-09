@@ -49,6 +49,8 @@ before(async () => {
   process.env.CLAUDE_CONFIG_DIR = path.join(runDir, 'claude-config'); // claude giả ghi nhật ký phiên ở đây để audit.ts đọc
   process.env.TG_BOT_TOKEN = 'bot-token-must-not-leak';
   process.env.ANTHROPIC_API_KEY = 'sk-must-not-leak';
+  process.env.META_READ_TOKEN = 'readonly-must-not-leak';
+  process.env.DRIVE_SERVICE_ACCOUNT_JSON = 'credentials-must-not-leak';
   jobsCfg = {
     bin: process.execPath,
     binArgs: [FAKE],
@@ -116,6 +118,8 @@ after(async () => {
   store.close();
   delete process.env.FAKE_CLAUDE_LOG;
   delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.META_READ_TOKEN;
+  delete process.env.DRIVE_SERVICE_ACCOUNT_JSON;
   delete process.env.CLAUDE_CONFIG_DIR;
 });
 
@@ -145,7 +149,7 @@ const texts = () => tg.calls.filter((c) => c.method === 'sendMessage' || c.metho
 const sentWith = (re: RegExp) => tg.calls.find((c) => (c.method === 'sendMessage' || c.method === 'editMessageText') && re.test(String(c.body.text ?? '')));
 const fakeRuns = () =>
   fs.existsSync(fakeLog)
-    ? fs.readFileSync(fakeLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; job: number; argv: string[]; cwd: string; hasBotToken: boolean; hasApiKey: boolean })
+    ? fs.readFileSync(fakeLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; job: number; argv: string[]; cwd: string; hasBotToken: boolean; hasApiKey: boolean; hasMetaReadToken: boolean; hasDriveCredentials: boolean })
     : [];
 const lastJobId = () => (jobs.db.prepare('SELECT max(id) id FROM jobs').get() as { id: number }).id;
 /** Nút trong tin gửi gần nhất có chữ khớp label, kèm message_id của tin đó. */
@@ -192,6 +196,8 @@ test('#NEW hợp lệ → claude -p dựng nháp (không có quyền bật) → 
   assert.ok(run.argv[run.argv.indexOf('--disallowedTools') + 1].includes('ads_activate_entity'));
   assert.equal(run.hasBotToken, false, 'không truyền TG_BOT_TOKEN sang claude');
   assert.equal(run.hasApiKey, false, 'không truyền ANTHROPIC_API_KEY sang claude');
+    assert.equal(run.hasMetaReadToken, false, 'không truyền META_READ_TOKEN sang claude');
+    assert.equal(run.hasDriveCredentials, false, 'không truyền service account sang claude');
   assert.ok(fs.readdirSync(run.cwd).length === 0, 'thư mục làm việc của claude phải rỗng');
 });
 
@@ -376,7 +382,7 @@ test('danh sách tool: chỉ lượt activate có ads_activate_entity', () => {
   for (const k of ['create', 'edit', 'activate', 'cancel'] as const) {
     assert.ok(!allowedToolsFor(k).some((t) => /share_file|trash_file|update-product|Bash|WebFetch/.test(t)), k);
     // graphql_mutation chỉ cho lượt create (đưa media qua Shopify Files) — xem test/audit.test.ts
-    assert.equal(allowedToolsFor(k).some((t) => t.endsWith('graphql_mutation')), k === 'create', k);
+    assert.equal(allowedToolsFor(k).some((t) => t.endsWith('graphql_mutation')), false, k);
   }
 });
 
@@ -423,7 +429,7 @@ test('prompt create: có giá trị bắt buộc, link tải Drive, cấm bật'
   });
   assert.match(p, /campaign_daily_budget 5000/);
   assert.match(p, /"pixel_id":"625569536048355","custom_event_type":"PURCHASE"/);
-  assert.match(p, /drive\.usercontent\.google\.com\/download\?id=<FILE_ID>&export=download&confirm=t/);
+  assert.match(p, /stage_drive_media/);
   assert.match(p, /Không bật gì \(ads_activate_entity bị khoá/);
   assert.doesNotMatch(p, /check_budget với/); // không có camp đang chạy thì bỏ bước trần ngân sách
 });

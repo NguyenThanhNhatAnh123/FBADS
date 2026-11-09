@@ -97,6 +97,14 @@ if (cfg) {
   }
 }
 
+// Optional bridge extensions: lack of billing credentials must not block the bot.
+if (cfg?.media) {
+  const probe = spawnSync(cfg.media.ffprobePath, ['-version'], { encoding: 'utf8', timeout: 10_000, windowsHide: true });
+  add({ name: 'Media ffprobe', ok: probe.status === 0 ? true : 'warn', detail: probe.status === 0 ? probe.stdout.split(/\r?\n/)[0] : 'chưa chạy được ffprobe; stage_drive_media chưa sẵn sàng', fix: 'Cài FFmpeg và đặt FFPROBE_PATH trong .env.bridge' });
+  add({ name: 'Drive staging', ok: true, detail: cfg.media.serviceAccountJson ? 'đã cấu hình service account readonly (cần Viewer trên thư mục)' : 'chỉ file công khai; chưa có service account / email để chia sẻ' });
+}
+if (cfg?.billing) add({ name: 'Billing H3', ok: cfg.billing.token ? true : 'warn', detail: cfg.billing.token ? 'đã có META_READ_TOKEN (chưa xác minh quyền)' : 'chưa có META_READ_TOKEN; tool sẽ báo not_configured' });
+
 // 7. pm2
 const pm2 = spawnSync('pm2', ['-v'], { encoding: 'utf8', timeout: 60_000, shell: true, windowsHide: true });
 add({ name: 'pm2', ok: pm2.status === 0 ? true : 'warn', detail: pm2.status === 0 ? pm2.stdout.trim().split(/\r?\n/).pop()! : 'chưa cài', fix: 'npm install -g pm2 (deploy/install-windows.ps1 tự cài)' });
@@ -105,7 +113,7 @@ add({ name: 'pm2', ok: pm2.status === 0 ? true : 'warn', detail: pm2.status === 
 if (live && hasCli && cfg?.jobs) {
   const acc = cfg.jobs.account.adAccountId;
   const env = { ...process.env };
-  for (const k of ['ANTHROPIC_API_KEY', 'TG_BOT_TOKEN', 'MCP_TOKEN', 'BRIDGE_KEY', 'TG_WEBHOOK_SECRET']) delete env[k];
+  for (const k of ['ANTHROPIC_API_KEY', 'TG_BOT_TOKEN', 'MCP_TOKEN', 'BRIDGE_KEY', 'TG_WEBHOOK_SECRET', 'META_READ_TOKEN', 'DRIVE_SERVICE_ACCOUNT_JSON', 'GOOGLE_SA_JSON']) delete env[k];
   const r = spawnSync(
     bin,
     ['-p', '--restricted', '--permission-mode', 'dontAsk', '--allowedTools', 'mcp__claude_ai_Facebook_Ads__ads_get_ad_accounts', '--max-turns', '6', '--output-format', 'json'],

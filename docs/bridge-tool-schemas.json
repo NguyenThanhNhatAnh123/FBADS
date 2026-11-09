@@ -1,0 +1,278 @@
+{
+  "tools": [
+    {
+      "name": "stage_drive_media",
+      "title": "Tạo link media ngắn hạn từ Drive",
+      "description": "Tải MP4/MOV/JPG/PNG từ Drive vào cache và trả URL HTTPS trực tiếp cho Meta tải. Ưu tiên service account Viewer, dự phòng file công khai. Video tối đa 1 GB, ảnh 30 MB. Không tạo/bật/sửa quảng cáo; URL là bí mật và tự hết hạn.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{10,200}$"
+          },
+          "ttl_hours": {
+            "description": "Mặc định 6 giờ, tối đa 24 giờ",
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 24
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "send_message",
+      "title": "Gửi tin Telegram",
+      "description": "Gửi một tin văn bản lên chat Telegram của chủ shop. Hỗ trợ Markdown kiểu Telegram (*đậm*, _nghiêng_, `code`, [chữ](link)); **đậm** và tiêu đề # được tự chuyển. Tin dài hơn 4.096 ký tự được tự chia thành nhiều tin. Markdown sai cú pháp thì gửi dạng chữ thường. Truyền dedupe_key để không gửi lặp: nếu đã có tin cùng khoá trong dedupe_hours giờ gần đây thì bỏ qua và trả skipped=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40000,
+            "description": "Nội dung tin"
+          },
+          "silent": {
+            "description": "true = gửi không kèm thông báo âm thanh",
+            "type": "boolean"
+          },
+          "dedupe_key": {
+            "description": "Khoá chống gửi lặp, ví dụ \"billing-H3-80\"",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "dedupe_hours": {
+            "description": "Cửa sổ chống lặp tính bằng giờ (mặc định 24)",
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 744
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "send_file",
+      "title": "Gửi file Telegram",
+      "description": "Gửi một file (CSV, PNG biểu đồ, PDF báo cáo...) lên chat của chủ shop. Truyền nội dung base64 (tối đa 10 MB) hoặc một URL công khai. Không đọc được file trên server. Ảnh PNG/JPG được gửi dạng ảnh xem trực tiếp.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Tên file kèm đuôi, ví dụ ads_2026-11-07.csv"
+          },
+          "content_base64": {
+            "description": "Nội dung file mã hoá base64",
+            "type": "string"
+          },
+          "url": {
+            "description": "URL công khai (http/https) của file",
+            "type": "string",
+            "format": "uri"
+          },
+          "caption": {
+            "description": "Chú thích kèm file",
+            "type": "string",
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "filename"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "send_approval",
+      "title": "Gửi tin có nút",
+      "description": "Gửi tin có tối đa 4 nút bấm (ví dụ đề xuất tắt ad / tăng budget). `ref` là mã việc do Claude đặt để nhận lại lần bấm. Chủ shop bấm một lần; lần bấm được lưu và đọc bằng list_button_presses ở lượt chạy sau. Tool này không tự thực hiện thay đổi nào trên quảng cáo.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Mã việc, ví dụ \"scale-2026-11-07-ad123\""
+          },
+          "buttons": {
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ]
+            }
+          }
+        },
+        "required": [
+          "text",
+          "ref",
+          "buttons"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_inbox",
+      "title": "Đọc hộp thư",
+      "description": "Danh sách tin tự do chủ shop gõ trên Telegram (không phải brief #NEW/#ADD) chưa được xử lý. Mỗi mục có id dạng \"m12\"; xử lý xong thì gọi mark_handled để lượt sau không đọc lại. Chỉ đọc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "since_id": {
+            "description": "Chỉ lấy mục sau id này, ví dụ \"m12\"",
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "limit": {
+            "description": "Mặc định 20",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_button_presses",
+      "title": "Đọc lần bấm nút",
+      "description": "Danh sách lần bấm nút (của tin gửi bằng send_approval) chưa được xử lý. Lọc theo ref nếu cần. Mỗi mục có id dạng \"b3\". Chỉ đọc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "since_id": {
+            "type": [
+              "string",
+              "number"
+            ]
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "mark_handled",
+      "title": "Đánh dấu đã xử lý",
+      "description": "Đánh dấu tin hộp thư (\"m12\") hoặc lần bấm nút (\"b3\") đã xử lý để lượt sau không đọc lại.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "number"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_status",
+      "title": "Tình trạng bridge",
+      "description": "Bot còn sống, bridge đang nhận được tin Telegram (webhook đặt đúng, hoặc polling khi test local), Agent có phản hồi, số tin / lần bấm chưa xử lý, số mục đang chờ chuyển Agent. Chỉ đọc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_billing_status",
+      "title": "Số dư và ngưỡng thanh toán",
+      "description": "Đọc số dư (balance), đã chi, spend cap và chu kỳ ngưỡng thanh toán của tài khoản quảng cáo H3 qua META_READ_TOKEN (ads_read), kể cả BRIEF_HANDLER=claude; Agent dùng key là đường dự phòng. Dùng cho cảnh báo sắp chạm ngưỡng khi connector Facebook Ads không trả các số này. Tiền theo cent của đơn vị tiền tệ tài khoản. Chỉ đọc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ]
+}

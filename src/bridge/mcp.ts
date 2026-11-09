@@ -1,5 +1,5 @@
 // Server MCP (Streamable HTTP, không giữ phiên) cho custom connector trên claude.ai.
-// 7 tool + get_billing_status; mọi tool chỉ làm việc với đúng một chat của chủ shop — không tool nào nhận chat_id.
+// 9 tools: Telegram, readonly billing and short-lived Drive media staging.
 // Cố ý KHÔNG có: tool tạo/bật/tắt quảng cáo, gửi tới chat khác, đọc lịch sử chat cũ, đọc file trên server.
 
 import path from 'node:path';
@@ -13,6 +13,8 @@ import { TelegramError } from '../shared/telegram.ts';
 import { toTelegramMarkdown } from './outbox.ts';
 import type { BridgeConfig } from './config.ts';
 import type { PollingState } from './polling.ts';
+import { MediaError, type StagedMedia } from './media.ts';
+import { BillingError, type ReadonlyBilling } from './billing.ts';
 
 export interface McpDeps {
   cfg: BridgeConfig;
@@ -22,6 +24,8 @@ export interface McpDeps {
   forwarder: AgentForwarder;
   polling?: PollingState; // chỉ có khi BRIDGE_POLLING=1
   jobs?: { summary(): Record<string, unknown> }; // BRIEF_HANDLER=claude
+  media?: StagedMedia;
+  billing?: ReadonlyBilling;
 }
 
 /** Polling coi là ổn khi bot không có webhook và getUpdates vừa thành công (mỗi vòng ≤ 25s). */
@@ -67,6 +71,20 @@ export function buildMcpServer(d: McpDeps): McpServer {
       return fail(msg);
     }
   };
+
+  server.registerTool('stage_drive_media', {
+    title: 'Tạo link media ngắn hạn từ Drive',
+    description: 'Tải MP4/MOV/JPG/PNG từ Drive vào cache và trả URL HTTPS trực tiếp cho Meta tải. Ưu tiên service account Viewer, dự phòng file công khai. Video tối đa 1 GB, ảnh 30 MB. Không tạo/bật/sửa quảng cáo; URL là bí mật và tự hết hạn.',
+    inputSchema: { file_id: z.string().regex(/^[A-Za-z0-9_-]{10,200}$/), ttl_hours: z.number().positive().max(24).optional().describe('Mặc định 6 giờ, tối đa 24 giờ') },
+  }, async ({ file_id, ttl_hours }) => logged('stage_drive_media', 0, async () => {
+    try {
+      if (!d.media) throw new MediaError('not_configured', 'Chưa cấu hình dịch vụ media.');
+      return { result: ok(await d.media.stage(file_id, ttl_hours)) };
+    } catch (error) {
+      const e = error instanceof MediaError ? error : new MediaError('download_failed', 'Không tải được media từ Drive.');
+      return { result: { content: [{ type: 'text', text: JSON.stringify({ error: e.code, message: e.message }) }], isError: true } };
+    }
+  }));
 
   server.registerTool(
     'send_message',
@@ -302,6 +320,8 @@ export function buildMcpServer(d: McpDeps): McpServer {
             inbox_unhandled: d.store.countUnhandledInbox(),
             button_presses_unhandled: d.store.countUnhandledPresses(),
             agent_queue_pending: d.store.pendingQueueCount(),
+            media: { configured: !!d.media && d.cfg.publicUrl.startsWith('https://'), service_account_email: d.media?.serviceAccountEmail ?? null, private_files_supported: !!d.media?.serviceAccountEmail },
+            billing: { read_token_configured: d.billing?.configured ?? false },
           }),
         };
       }),
@@ -312,17 +332,24 @@ export function buildMcpServer(d: McpDeps): McpServer {
     {
       title: 'Số dư và ngưỡng thanh toán',
       description:
-        'Đọc số dư (balance), đã chi, spend cap và chu kỳ ngưỡng thanh toán của tài khoản quảng cáo H3 qua Agent (Graph API). ' +
+        'Đọc số dư (balance), đã chi, spend cap và chu kỳ ngưỡng thanh toán của tài khoản quảng cáo H3 qua META_READ_TOKEN (ads_read), kể cả BRIEF_HANDLER=claude; Agent dùng key là đường dự phòng. ' +
         'Dùng cho cảnh báo sắp chạm ngưỡng khi connector Facebook Ads không trả các số này. Tiền theo cent của đơn vị tiền tệ tài khoản. Chỉ đọc.',
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
     async () =>
-      logged('get_billing_status', 0, async () =>
-        d.jobs
-          ? { result: fail('Bridge đang chạy BRIEF_HANDLER=claude (không có Agent dùng token Meta): đọc số dư và ngưỡng thanh toán bằng connector Facebook Ads.') }
-          : { result: ok(await d.forwarder.agentBilling()) },
-      ),
+      logged('get_billing_status', 0, async () => {
+        if (d.billing?.configured) {
+          try { return { result: ok(await d.billing.read()) }; }
+          catch (error) {
+            const e = error instanceof BillingError ? error : new BillingError('meta_unavailable', 'Không đọc được thanh toán Meta.');
+            return { result: { content: [{ type: 'text', text: JSON.stringify({ error: e.code, message: e.message }) }], isError: true } };
+          }
+        }
+        return d.jobs || d.cfg.briefHandler === 'claude'
+          ? { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'not_configured', message: 'Chưa cấu hình META_READ_TOKEN chỉ có ads_read trên H3; không thể đọc số dư thật.' }) }], isError: true } }
+          : { result: ok(await d.forwarder.agentBilling()) };
+      }),
   );
 
   return server;

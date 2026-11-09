@@ -24,7 +24,7 @@ const kind = m?.[1] ?? 'unknown';
 if (logFile) {
   fs.appendFileSync(
     logFile,
-    JSON.stringify({ kind, job: Number(m?.[2]), run: Number(m?.[3]), argv, cwd: process.cwd(), hasBotToken: !!process.env.TG_BOT_TOKEN, hasApiKey: !!process.env.ANTHROPIC_API_KEY }) + '\n',
+    JSON.stringify({ kind, job: Number(m?.[2]), run: Number(m?.[3]), argv, cwd: process.cwd(), hasBotToken: !!process.env.TG_BOT_TOKEN, hasApiKey: !!process.env.ANTHROPIC_API_KEY, hasMetaReadToken: !!process.env.META_READ_TOKEN, hasDriveCredentials: !!process.env.DRIVE_SERVICE_ACCOUNT_JSON }) + '\n',
   );
 }
 

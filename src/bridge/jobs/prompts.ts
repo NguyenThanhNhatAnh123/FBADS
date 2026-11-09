@@ -37,21 +37,21 @@ const SHOP_READ = ['search_products', 'get-product', 'graphql_query', 'get-shop-
 const DRIVE_READ = ['get_file_metadata', 'search_files'];
 
 export const JOB_TOOLS: Record<RunKind, string[]> = {
-  create: ['get_job', 'wait', 'report_progress', 'check_budget', 'check_copy', 'need_choice', 'submit_drafts', 'report_failure'],
+  create: ['stage_drive_media', 'get_job', 'wait', 'report_progress', 'check_budget', 'check_copy', 'need_choice', 'submit_drafts', 'report_failure'],
   edit: ['get_job', 'wait', 'report_progress', 'check_copy', 'submit_drafts', 'report_failure'],
   activate: ['get_job', 'wait', 'report_progress', 'submit_activation', 'report_failure'],
   cancel: ['get_job', 'wait', 'report_progress', 'submit_cancel', 'report_failure'],
 };
 
 export function allowedToolsFor(kind: RunKind, dry = false): string[] {
-  const job = JOB_TOOLS[kind].map((t) => JOB + t);
+  const job = JOB_TOOLS[kind].filter(t => !dry || t !== 'stage_drive_media').map((t) => JOB + t);
   const fbRead = FB_READ.map((t) => FB + t);
   // Chạy thử: chỉ tool ĐỌC — không có tool nào ghi lên Meta (upload, create, update, delete, activate).
   if (dry) return [...fbRead, ...SHOP_READ.map((t) => SHOP + t), ...DRIVE_READ.map((t) => DRIVE + t), ...job];
   switch (kind) {
     case 'create':
-      // graphql_mutation CHỈ cho lượt create (đưa media qua Shopify Files); audit.ts soát lại mọi mutation sau lượt chạy.
-      return [...fbRead, ...FB_BUILD.map((t) => FB + t), ...SHOP_READ.map((t) => SHOP + t), SHOP + 'graphql_mutation', ...DRIVE_READ.map((t) => DRIVE + t), ...job];
+      // Media is staged by the bridge; Shopify remains read-only.
+      return [...fbRead, ...FB_BUILD.map((t) => FB + t), ...SHOP_READ.map((t) => SHOP + t), ...DRIVE_READ.map((t) => DRIVE + t), ...job];
     case 'edit':
       return [...fbRead, ...FB_BUILD.map((t) => FB + t), ...SHOP_READ.map((t) => SHOP + t), ...DRIVE_READ.map((t) => DRIVE + t), ...job];
     case 'activate':
@@ -66,7 +66,7 @@ export function disallowedToolsFor(kind: RunKind, dry = false): string[] {
   const out = ['Bash', 'PowerShell', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Task'];
   if (kind !== 'activate' || dry) out.push(FB + 'ads_activate_entity');
   if (dry) out.push(...FB_BUILD.map((t) => FB + t));
-  if (kind !== 'create' || dry) out.push(SHOP + 'graphql_mutation'); // chỉ lượt create thật được đưa media qua Shopify Files
+  out.push(SHOP + 'graphql_mutation'); // no Shopify writes are needed for staging
   out.push(
     FB + 'ads_boost_ig_post',
     FB + 'ads_create_custom_audience',
@@ -131,18 +131,13 @@ Bị cấm (nghệ sĩ không phải người bản địa — tránh vi phạm 
 - Không hứa hẹn sức khoẻ, tâm linh có tác dụng thật; không viết IN HOA cả câu; tối đa 3 emoji mỗi phương án.
 Luôn gọi check_copy trước khi tạo creative; còn lỗi thì viết lại.`;
 
-/**
- * Đưa media Drive → Meta qua Shopify Files. Meta không tải được link Drive: robots.txt của
- * drive.usercontent.google.com là "Disallow: /" (lỗi Meta subcode 3858258). Shopify tự kéo được link đó
- * (đã thử 09/11/2026) và trả URL cdn.shopify.com mà Meta tải được. File trung gian bị xoá sau khi Meta có media.
- */
-export function mediaViaShopify(jobId: number): string {
-  return `Đưa từng file lên Meta QUA SHOPIFY FILES (Meta không tải được link Drive vì robots.txt của Google chặn):
-   a. graphql_mutation (Shopify): query "mutation fileCreate($files: [FileCreateInput!]!) { fileCreate(files: $files) { files { id fileStatus } userErrors { field message code } } }", variables {"files":[{"originalSource":"https://drive.usercontent.google.com/download?id=<FILE_ID>&export=download&confirm=t","contentType":"IMAGE" hoặc "VIDEO","alt":"ads-brief-${jobId} <tên file trên Drive>"}]}. KHÔNG truyền filename (Shopify bắt đuôi khớp link gốc). Có thể gửi nhiều file trong một lần.
-   b. graphql_query (Shopify): "{ node(id: \\"<id>\\") { ... on MediaImage { fileStatus fileErrors { code message } image { url width height } } ... on Video { fileStatus fileErrors { code message } duration sources { url mimeType width height } } } }" — wait(10) giữa các lần, tới khi fileStatus READY (tối đa 10 phút). FAILED → dọn và report_failure kèm fileErrors (thường do file Drive chưa để "Bất kỳ ai có đường liên kết"). Ảnh: url = image.url, ghi width / height. Video: url = source video/mp4 có chiều cao lớn nhất, ghi width / height, duration_s = duration / 1000.
-   c. ads_creative_upload_media(ad_account_id, upload_source "URL", media_type "IMAGE" / "VIDEO", media_url = URL cdn.shopify.com ở bước b, name = tên file gốc trên Drive). Ảnh → image_hash. Video → video_id; wait(30) rồi ads_get_ad_videos(video_ids=[...]) tới khi status ready (tối đa 10 phút; quá → dọn và report_failure nêu tên file), lấy length và picture (thumbnail).
-   d. Khi Meta đã có media (có image_hash, video ready): xoá file trung gian bằng graphql_mutation "mutation fileDelete($fileIds: [ID!]!) { fileDelete(fileIds: $fileIds) { deletedFileIds userErrors { message } } }" với đúng các ID đã tạo ở bước a. Ghi shopify_file_id của từng media khi nộp.
-   CHỈ được dùng graphql_mutation cho fileCreate và fileDelete các file do lượt này tạo. Mọi mutation khác (sản phẩm, giá, tồn kho, đơn hàng, khách hàng, discount, theme, metafield...) bị CẤM — bridge đọc lại nhật ký lượt chạy và khoá brief nếu thấy.`;
+/** Drive media is cached on the bridge; only Claude performs Meta uploads. */
+export function mediaViaBridge(_jobId: number): string {
+  return `Đưa từng file lên Meta QUA CACHE BRIDGE:
+   a. Gọi stage_drive_media của server adsjob với file_id và ttl_hours=6. Tool trả url HTTPS trực tiếp, file_name, mime_type, size_bytes, kind, width, height và duration_sec (video). Tool chỉ tải vào cache, không ghi lên Meta.
+   b. stage_drive_media báo no_access/not_found: cần chia sẻ Viewer cho service account (nếu đã cấu hình) hoặc mở Bất kỳ ai có đường liên kết. Lỗi khác: report_failure nguyên nhân; không chuyển qua Shopify Files, không tự tải file trong môi trường Claude.
+   c. Claude gọi ads_creative_upload_media(ad_account_id, upload_source "URL", media_type "IMAGE" / "VIDEO", media_url = url của bridge, name = tên file gốc). Ảnh → image_hash. Video → video_id; wait(30) rồi ads_get_ad_videos tới ready (tối đa 10 phút), lấy picture làm thumbnail.
+   d. Dùng width/height/duration_sec của bridge để kiểm tra tỷ lệ và thời lượng. Cache tự hết hạn; không gọi fileCreate/fileDelete Shopify, không ghi shopify_file_id. Không công bố URL media ngoài lượt chạy.`;
 }
 
 function fbCommon(acc: JobAccount, job: JobRow, advertiserJob: string): string {
@@ -202,9 +197,9 @@ ${budgetStep}${retryStep}2. Sản phẩm (Shopify): tìm theo handle "${b.produc
 3. Creative trên Drive (${b.creative.kind === 'folder' ? 'thư mục' : 'file'} id ${b.creative.id}, link ${b.creative.url}):
    - ${b.creative.kind === 'folder' ? `Thư mục: search_files query "parentId = '${b.creative.id}' and trashed = false", chỉ lấy video và ảnh, xếp theo tên tăng dần, tối đa ${c.limits.maxFiles} file (nhiều hơn → chỉ lấy ${c.limits.maxFiles} file đầu và thêm warning).` : `File: get_file_metadata(fileId "${b.creative.id}", includeRichMetadata=true).${b.creative.kind === 'unknown' ? ' Nếu id này là thư mục thì liệt kê file trong đó như một thư mục.' : ''}`}
    - Chỉ nhận video MP4 / MOV và ảnh JPG / PNG; file khác bỏ qua kèm warning. Không còn file nào → report_failure.
-   - Quyền: Meta tự tải file qua link công khai nên file phải ở chế độ "Bất kỳ ai có đường liên kết". Đọc visibility (get_file_metadata includeRichMetadata=true): "UNLISTED" (= bất kỳ ai có đường liên kết) hoặc "PUBLIC" là được; giá trị khác (ví dụ "PRIVATE", chỉ trong tổ chức) → report_failure với reason "Mở quyền 'Bất kỳ ai có đường liên kết – Người xem' cho ${b.creative.kind === 'folder' ? 'thư mục' : 'file'} creative rồi gõ /retry ${c.job.id}".
-   - Kích thước / thời lượng lấy ở bước 4 (Shopify trả width / height / duration). Video cần 5–60 giây, ảnh cạnh ngắn ≥ 1080 px; tỷ lệ khác 9:16, 4:5, 1:1 → vẫn làm, ghi warning của media đó. Không đo được thì bỏ trống, không đoán.
-4. ${mediaViaShopify(c.job.id)}
+   - Quyền: không yêu cầu file công khai trước. stage_drive_media thử service account Viewer trước, rồi đường tải công khai; chỉ báo lỗi quyền nếu tool không tải được.
+   - Kích thước / thời lượng lấy ở bước 4 (bridge đo bằng ffprobe). Video cần 5–60 giây, ảnh cạnh ngắn ≥ 1080 px; tỷ lệ khác 9:16, 4:5, 1:1 → vẫn làm, ghi warning của media đó. Không đo được thì bỏ trống, không đoán.
+4. ${mediaViaBridge(c.job.id)}
 5. Viết 2 phương án copy (V3 chỉ khi Ghi chú copy yêu cầu hướng khác) theo QUY TẮC COPY bên dưới, đưa Ghi chú copy của brief vào cách viết. Gọi check_copy (product_page_text = mô tả + giá + ưu đãi đọc ở bước 2) cho tới khi không còn lỗi.
 6. Instagram: tìm instagram_user_id của tài khoản Instagram gắn với Page ${acc.pageId} (ads_get_ig_accounts, hoặc đọc từ một ad đang chạy trên ${acc.name}). Không tìm được → tạo không kèm và thêm warning "Chưa gắn Instagram — ad có thể không chạy ở vị trí Instagram".
 7. Creative: mỗi media × mỗi phương án một ads_create_creative: page_id, link_url, call_to_action_type SHOP_NOW, message = primary_text, headline, description, name = tên ad tương ứng, instagram_user_id nếu có; video: video_id + image_url = picture của video đó; ảnh: image_hash. Không bật advantage_plus_creative, không gửi self_ai_disclosure.
@@ -243,8 +238,8 @@ function createAdd(c: PromptContext, b: AddBrief): string {
         : `Adset: dùng adset đang chạy (ACTIVE) đầu tiên của campaign; không có → report_failure. Không sửa adset này.`;
   const posts = b.postIds.length
     ? `4. Creative từ Post ID có sẵn (${b.postIds.join(', ')}): mỗi Post ID một ads_create_creative(ad_account_id, page_id ${acc.pageId}, object_story_id = Post ID, instagram_user_id nếu có, name "{Sản phẩm} - {Post ID}") — không viết copy, không tải media, không gọi Shopify, không tạo bài mới. Trong submit_drafts: product = null, media = [], variants = [], mỗi ad variant = null, post_id = Post ID.`
-    : `4. Không có Post ID: lấy sản phẩm Shopify theo handle "${b.productHandle}" (status khác ACTIVE → report_failure retryable=false); đọc creative trên Drive (${b.creative?.kind} id ${b.creative?.id}, link ${b.creative?.url}): thư mục → search_files query "parentId = '${b.creative?.id}' and trashed = false", chỉ video MP4/MOV và ảnh JPG/PNG, xếp theo tên, tối đa ${c.limits.maxFiles} file. File phải ở chế độ "Bất kỳ ai có đường liên kết": visibility (get_file_metadata includeRichMetadata=true) phải là "UNLISTED" hoặc "PUBLIC"; giá trị khác → report_failure "Mở quyền 'Bất kỳ ai có đường liên kết – Người xem' cho creative rồi gõ /retry ${c.job.id}".
-   ${mediaViaShopify(c.job.id)}
+    : `4. Không có Post ID: lấy sản phẩm Shopify theo handle "${b.productHandle}" (status khác ACTIVE → report_failure retryable=false); đọc creative trên Drive (${b.creative?.kind} id ${b.creative?.id}, link ${b.creative?.url}): thư mục → search_files query "parentId = '${b.creative?.id}' and trashed = false", chỉ video MP4/MOV và ảnh JPG/PNG, xếp theo tên, tối đa ${c.limits.maxFiles} file. Quyền tải được kiểm tra bằng stage_drive_media: ưu tiên service account Viewer, dự phòng file công khai.
+   ${mediaViaBridge(c.job.id)}
    Viết 2 phương án copy (V3 chỉ khi Ghi chú copy yêu cầu) theo QUY TẮC COPY, check_copy tới khi sạch.
    Creative: mỗi media × mỗi phương án một ads_create_creative (page_id ${acc.pageId}, link_url "${b.productUrl}", call_to_action_type SHOP_NOW, message / headline / description, video_id + image_url thumbnail hoặc image_hash, instagram_user_id nếu có, name = tên ad "{Sản phẩm} - {tên file không đuôi} - V{n}"). Đọc Post ID bằng ads_get_creatives nếu có.`;
   return `${header(c, `VIỆC CẦN LÀM: thêm ad mới vào campaign đang chạy trên ${acc.name} theo brief #ADD dưới đây, CHỈ Ở DẠNG NHÁP, rồi nộp bằng submit_drafts. Không được bật gì, không sửa campaign / adset đang chạy.`)}
@@ -264,7 +259,7 @@ ${posts}
 8. Preview: ads_get_ad_preview(ad_id, "MOBILE_FEED_STANDARD"), ad video thêm "INSTAGRAM_REELS"; lấy preview_url (lỗi thì thử bằng creative_id); không có → null.
 9. submit_drafts: campaign.existing = true (ghi đúng id, tên, budget, bid_strategy, status hiện tại của campaign), adset.existing = ${b.adset.mode === 'new' ? 'false (adset mới)' : 'true'}. Bị trả lỗi → sửa rồi nộp lại.
 
-KHI LỖI GIỮA CHỪNG: dọn object lượt này tạo (bỏ nháp adset mới hoặc từng ad mới bằng ads_update_entity discard_draft_changes — xem trước rồi xác nhận bằng confirmation_token chỉ khi danh sách chỉ gồm object mới của brief này; xoá creative đã tạo; fileDelete file trung gian trên Shopify do lượt này tạo), rồi report_failure kèm nguyên văn lỗi Meta.
+KHI LỖI GIỮA CHỪNG: dọn object lượt này tạo (bỏ nháp adset mới hoặc từng ad mới bằng ads_update_entity discard_draft_changes — xem trước rồi xác nhận bằng confirmation_token chỉ khi danh sách chỉ gồm object mới của brief này; xoá creative đã tạo), rồi report_failure kèm nguyên văn lỗi Meta.
 TUYỆT ĐỐI KHÔNG: bật gì, đổi budget / target / trạng thái của campaign hay adset có sẵn, xoá object không do lượt này tạo, tự nghĩ ra ưu đãi.
 
 ${b.postIds.length ? '' : COPY_RULES}`;

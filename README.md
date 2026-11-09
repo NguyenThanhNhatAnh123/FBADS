@@ -4,7 +4,7 @@ Hai tiến trình Node.js/TypeScript chạy trên server Windows văn phòng, th
 
 | Tiến trình | Việc | Mở ra Internet |
 | --- | --- | --- |
-| **bridge** (`src/bridge`) | Giữ bot Telegram (webhook), chuyển brief / nút `ag:` sang Agent ngay lập tức, lưu tin tự do + nút `cl:` cho Claude, mở 8 tool MCP cho custom connector claude.ai | Có — `/tg/webhook`, `/mcp` và các endpoint OAuth qua Cloudflare Tunnel |
+| **bridge** (`src/bridge`) | Giữ bot Telegram (webhook), chuyển brief / nút `ag:` sang Agent ngay lập tức, lưu tin tự do + nút `cl:` cho Claude, mở 9 tool MCP cho custom connector claude.ai | Có — `/tg/webhook`, `/mcp`, media tạm và các endpoint OAuth qua Cloudflare Tunnel |
 | **agent** (`src/agent`) | Nhận brief `#NEW` / `#ADD`, dựng creative → Post ID → campaign → adset → ad ở trạng thái **PAUSED** trên H3, gửi tin duyệt, chỉ bật khi chủ shop bấm **Duyệt & chạy** | Không — chỉ nghe `127.0.0.1` |
 
 ```
@@ -16,7 +16,7 @@ Telegram ──webhook──► bridge ──localhost /brief, /callback──�
 
 ## Chế độ không dùng key: `BRIEF_HANDLER=claude`
 
-Server không giữ token Meta, Shopify, Google hay Claude API. Bridge tự xử lý brief bằng **Claude Code chạy headless** (`claude -p`) trên chính máy này, đăng nhập bằng tài khoản claude.ai đã có connector **Facebook Ads**, **Shopify**, **Google Drive**. Không chạy tiến trình agent. Trên server chỉ còn token bot Telegram, `MCP_TOKEN`, `BRIDGE_KEY` và phiên đăng nhập Claude Code.
+Bridge xử lý brief bằng **Claude Code headless** (`claude -p`) đã đăng nhập tài khoản có connector Facebook Ads, Shopify và Google Drive; không cần key ghi Meta / Shopify hay Claude API. Tuỳ chọn thêm `META_READ_TOKEN` chỉ ads_read để đọc thanh toán H3, và `DRIVE_SERVICE_ACCOUNT_JSON` chỉ drive.readonly để tải creative riêng tư. Xem [bản nâng cấp H3 và schema tool](docs/bridge-upgrade-h3.md).
 
 ```
 Telegram ──► bridge: đọc brief + giới hạn an toàn (code) ──► claude -p (lượt create: chỉ tạo NHÁP)
@@ -33,15 +33,15 @@ bấm Duyệt ──► claude -p (lượt activate: lượt DUY NHẤT có ads_
 - `submit_drafts` bị trả về nếu tên camp / adset, `daily_budget` (cent), `bid_strategy`, quốc gia lệch giá trị bridge tính sẵn, object mới đang ACTIVE, hoặc copy vi phạm `src/agent/copy/rules.ts`. Tin duyệt chỉ được gửi khi mọi thứ khớp.
 - Nút ký HMAC + số phiên bản, đổi trạng thái nguyên tử → bấm hai lần không chạy hai lần. Tiến trình claude nói chuyện với bridge qua `/job-mcp/<token một lần>`, chỉ nhận từ localhost; request qua tunnel bị 401.
 - Biến bí mật (`TG_BOT_TOKEN`, `MCP_TOKEN`, `BRIDGE_KEY`, `ANTHROPIC_API_KEY`…) bị xoá khỏi env của tiến trình con. Thư mục làm việc của mỗi lượt là thư mục rỗng.
-- `graphql_mutation` của Shopify chỉ cấp cho lượt create (để đưa media qua Shopify Files). Sau **mỗi** lượt, `src/bridge/jobs/audit.ts` đọc nhật ký phiên (`~/.claude/projects/<thư mục lượt>/<session_id>.jsonl`) và liệt kê mọi lần ghi dữ liệu vào `job_runs.audit_json`; mutation Shopify ngoài `fileCreate` / `fileDelete`, xoá file không do lượt đó tạo, `ads_update_entity` đổi budget / bid / target / DELETED trên object ngoài brief, bật object ngoài danh sách duyệt → báo 🔴 và **khoá brief** (gỡ nút duyệt).
+- Lượt create dùng `stage_drive_media` trên bridge để cache media; không cấp `graphql_mutation` Shopify. Sau mỗi lượt, audit.ts vẫn soát nhật ký Meta / Shopify và khoá brief nếu có thao tác ngoài phạm vi. Token đọc Meta và service account bị loại khỏi môi trường Claude.
 
 **Cài**
 
 1. Đăng nhập Claude Code trên máy này một lần (`claude`, rồi `/login` bằng tài khoản có connector). Kiểm tra: `claude mcp list` phải thấy `claude.ai Facebook Ads`, `claude.ai Shopify`, `claude.ai Google Drive` đều ✔ Connected.
 2. `.env.bridge`: `BRIEF_HANDLER=claude`, `CLAUDE_BIN=C:/Users/Admin/.local/bin/claude.exe` (xem `.env.bridge.example`). Không cần `.env.agent`.
 3. Chạy `npm run bridge` (test local: `BRIDGE_POLLING=1`) hoặc `pm2 start ecosystem.config.cjs --only bridge`.
-4. Thư mục / file creative trên Drive: **Chia sẻ → Bất kỳ ai có đường liên kết – Người xem** (Drive báo `visibility: UNLISTED`). File riêng tư thì Claude dừng và báo cần mở quyền.
-5. Media đi **Drive → Shopify Files → Meta**: Meta không tải được link Drive (robots.txt của `drive.usercontent.google.com` là `Disallow: /`), nên lượt create gọi Shopify `fileCreate` với link tải Drive, chờ READY, đưa URL `cdn.shopify.com` cho `ads_creative_upload_media`, rồi `fileDelete` file trung gian. Shopify trả luôn width / height / duration để soát tỷ lệ khung. Đã thử 09/11/2026: Shopify kéo được file Drive UNLISTED, URL CDN trả đúng ảnh (kể cả với user-agent `facebookexternalhit`). Chưa thử bước Meta tải từ CDN (chưa được phép ghi lên H3).
+4. File Drive có thể chia sẻ Viewer cho service account trong `DRIVE_SERVICE_ACCOUNT_JSON`; nếu chưa cấu hình thì phải mở Bất kỳ ai có đường liên kết – Người xem.
+5. Media đi **Drive → cache bridge → Meta**: `stage_drive_media` tải bytes, đo ffprobe, trả link HTTPS ngắn hạn có Range. Claude dùng link này cho `ads_creative_upload_media`. Cài ffprobe và đặt `FFPROBE_PATH`; cache/link tự hết hạn. Không cần Shopify Files.
 
 **Chạy thử không đụng Meta** (`CLAUDE_DRY_RUN=1`): lượt claude chỉ được cấp tool đọc (Shopify, Drive, Facebook Ads), vẫn đọc sản phẩm, kiểm tra quyền Drive, viết + soát copy, rồi nộp bản nháp với ID giả. Tin duyệt gắn 🧪 CHẠY THỬ; Sửa copy chạy lượt sửa thật (chỉ đọc); Duyệt / Huỷ chỉ giả lập và ghi rõ khi chạy thật sẽ publish những gì. Job chạy thử không tính vào trần ngân sách.
 
@@ -74,17 +74,17 @@ Trên máy chỉ có: token bot Telegram + `MCP_TOKEN` / `BRIDGE_KEY` / `TG_WEBH
 
 **Còn phải kiểm khi được phép ghi lên H3**:
 
-- Meta tải ảnh / video từ `cdn.shopify.com` (bước cuối của đường media; link Drive thì Meta từ chối: `Image Wasn't Downloaded … robots.txt`, subcode 3858258).
+- Meta tải ảnh / video từ URL cache bridge (HTTP và Range đã kiểm thử; xác minh upload Meta khi chủ shop cho chạy thật).
 - Connector chưa đọc được bản nháp trên H3 (`object_state=draft`: "tool is new and is being gradually rolled out") — prompt bật / huỷ đang dựa vào việc đọc nháp, cần thử lại khi Meta mở.
 - `ads_get_ig_accounts` trả về rỗng: Page chưa gắn tài khoản Instagram cho quảng cáo → ad chỉ chạy bằng danh tính Page.
 
 **Khác với Agent dùng key** (cần lưu ý khi nghiệm thu):
 
 - Một brief mất vài phút (Claude gọi connector từng bước), chạy lần lượt từng brief.
-- Không có `ffprobe`: thời lượng / tỷ lệ video lấy từ metadata Drive và Meta; không đo được thì để trống và không đoán.
+- Media staging dùng `ffprobe` trên máy bridge để đo kích thước, tỷ lệ và thời lượng file đã tải.
 - Copy viết từ dữ liệu Shopify + tên file + Ghi chú copy; Claude không xem được khung hình video.
 - Chưa có bảng `posts` để tự dùng lại Post ID cũ cho cùng video + copy (dùng trường `Post ID` của `#ADD`).
-- `get_billing_status` không dùng được (không có Agent): scheduled task cảnh báo thanh toán đọc bằng connector Facebook Ads.
+- `get_billing_status` hoạt động trong chế độ claude khi có `META_READ_TOKEN` chỉ ads_read. Chưa có token thì trả not_configured; không suy đoán số dư/ngưỡng.
 
 ## Cài đặt trên server Windows
 
@@ -156,7 +156,7 @@ npm run typecheck
 npm test
 ```
 
-109 test, chạy với Telegram / Meta Graph API / Messages API giả lập trong bộ nhớ (ffmpeg thật), phủ OAuth, hai checklist nghiệm thu và chế độ `BRIEF_HANDLER=claude`:
+119 test, chạy với Telegram / Meta Graph API / Messages API giả lập trong bộ nhớ (ffmpeg thật), phủ OAuth, hai checklist nghiệm thu và chế độ `BRIEF_HANDLER=claude`:
 
 | Checklist | Test |
 | --- | --- |

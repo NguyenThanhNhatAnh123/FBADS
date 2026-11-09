@@ -13,6 +13,9 @@ ingress:
     path: ^/mcp(/.*)?$
     service: http://127.0.0.1:8787
   - hostname: bridge.example.com
+    path: ^/(media/.*|robots\.txt)$
+    service: http://127.0.0.1:8787
+  - hostname: bridge.example.com
     path: ^/(\.well-known/(oauth-authorization-server|oauth-protected-resource(/mcp)?)|authorize|register|token|revoke|oauth/approve|healthz)$
     service: http://127.0.0.1:8787
   # Mọi đường khác của hostname bridge → 404. Agent (cổng 8788) KHÔNG được trỏ ra ngoài.

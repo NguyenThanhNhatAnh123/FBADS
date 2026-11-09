@@ -188,6 +188,7 @@ test('get_status: bot, webhook, Agent đều ổn', async () => {
     'send_approval',
     'send_file',
     'send_message',
+    'stage_drive_media',
   ]);
   await c.close();
 });

@@ -20,7 +20,7 @@ const log = logger('claude-run');
 
 // Không truyền bí mật của bridge sang tiến trình con. ANTHROPIC_API_KEY bị bỏ để Claude Code luôn dùng
 // phiên đăng nhập claude.ai (connector + gói của chủ shop), không chuyển sang tính tiền API.
-const STRIP_ENV = ['TG_BOT_TOKEN', 'TG_WEBHOOK_SECRET', 'MCP_TOKEN', 'BRIDGE_KEY', 'CALLBACK_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'META_TOKEN', 'SHOPIFY_TOKEN', 'SHOPIFY_CLIENT_SECRET', 'GOOGLE_SA_JSON'];
+const STRIP_ENV = ['TG_BOT_TOKEN', 'TG_WEBHOOK_SECRET', 'MCP_TOKEN', 'BRIDGE_KEY', 'CALLBACK_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'META_TOKEN', 'META_READ_TOKEN', 'SHOPIFY_TOKEN', 'SHOPIFY_CLIENT_SECRET', 'GOOGLE_SA_JSON', 'DRIVE_SERVICE_ACCOUNT_JSON', 'GOOGLE_SERVICE_ACCOUNT_JSON'];
 
 export interface RunSpec {
   runId: number;

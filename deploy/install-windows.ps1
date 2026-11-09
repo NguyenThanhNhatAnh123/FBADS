@@ -97,6 +97,21 @@ if ($LASTEXITCODE -ne 0) { throw 'Cài thư viện lỗi' }
 if ($LASTEXITCODE -ne 0) { throw 'Không tải được SQLite native prebuild — kiểm tra Node.js và kiến trúc máy.' }
 Ok 'node_modules'
 
+Step '4b. ffprobe (media staging)'
+$ffprobe = Find-Cmd ffprobe
+if (-not $ffprobe) {
+  $portableProbe = Get-ChildItem -LiteralPath (Join-Path $root '.tools') -Filter ffprobe.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($portableProbe) { $ffprobe = $portableProbe.FullName }
+}
+if (-not $ffprobe) {
+  & winget install -e --id Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
+  if ($LASTEXITCODE -ne 0) { throw 'Cài FFmpeg lỗi; cài ffprobe rồi chạy lại script.' }
+  Refresh-Path
+  $ffprobe = Find-Cmd ffprobe
+  if (-not $ffprobe) { throw 'Chưa thấy ffprobe sau khi cài FFmpeg — mở PowerShell mới rồi chạy lại.' }
+}
+Ok "ffprobe ($ffprobe)"
+
 # ---------------------------------------------------------------- 5. .env.bridge
 Step '5. Cấu hình .env.bridge'
 $fresh = $false
@@ -123,6 +138,7 @@ if (-not (Get-EnvVal 'TG_ALLOWED_CHAT_IDS')) {
 }
 Set-EnvVal 'BRIEF_HANDLER' 'claude'
 Set-EnvVal 'CLAUDE_BIN' ($claude -replace '\\', '/')
+Set-EnvVal 'FFPROBE_PATH' ($ffprobe -replace '\\', '/')
 if ($fresh) {
   Set-EnvVal 'BRIDGE_POLLING' '1'          # nhận tin bằng getUpdates: không cần tunnel / mở cổng
   Set-EnvVal 'BRIDGE_PUBLIC_URL' ''

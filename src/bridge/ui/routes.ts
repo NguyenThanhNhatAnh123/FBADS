@@ -34,7 +34,7 @@ export interface UiOptions {
 
 type Connector = { name: string; ok: boolean; detail: string };
 
-const SECRET_ENV = ['TG_BOT_TOKEN', 'TG_WEBHOOK_SECRET', 'MCP_TOKEN', 'BRIDGE_KEY', 'ANTHROPIC_API_KEY'];
+const SECRET_ENV = ['TG_BOT_TOKEN', 'TG_WEBHOOK_SECRET', 'MCP_TOKEN', 'BRIDGE_KEY', 'ANTHROPIC_API_KEY', 'META_READ_TOKEN', 'DRIVE_SERVICE_ACCOUNT_JSON', 'GOOGLE_SA_JSON', 'GOOGLE_SERVICE_ACCOUNT_JSON'];
 const cleanEnv = () => {
   const e = { ...process.env };
   for (const k of SECRET_ENV) delete e[k];

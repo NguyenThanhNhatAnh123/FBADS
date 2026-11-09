@@ -11,12 +11,16 @@ import { JobStore } from './jobs/store.ts';
 import { JobManager } from './jobs/manager.ts';
 import { ClaudeCliRunner } from './jobs/runner.ts';
 import { logger } from '../shared/log.ts';
+import { StagedMedia } from './media.ts';
+import { ReadonlyBilling } from './billing.ts';
 
 const log = logger('bridge');
 
 async function main(): Promise<void> {
   const cfg = loadBridgeConfig();
   const store = new BridgeStore(cfg.dbFile);
+  const media = new StagedMedia(cfg.media!, store.db);
+  const billing = new ReadonlyBilling(cfg.billing!);
   const tg = new TelegramApi(cfg.tgBotToken);
   const limiter = new RateLimiter(cfg.sendPerMinute);
   const outbox = new Outbox(tg, cfg.ownerChatId, limiter);
@@ -33,12 +37,14 @@ async function main(): Promise<void> {
       limiter,
       runner: new ClaudeCliRunner(cfg.jobs),
       mcpBase: () => `http://${localHost}:${cfg.port}`,
+      stageMedia: (fileId, ttlHours) => media.stage(fileId, ttlHours),
     });
   }
 
-  const deps: BridgeDeps = { cfg, store, tg, outbox, forwarder, polling: cfg.polling ? newPollingState() : undefined, jobs };
+  const deps: BridgeDeps = { cfg, store, tg, outbox, forwarder, polling: cfg.polling ? newPollingState() : undefined, jobs, media, billing };
   const app = buildBridgeApp(deps);
   const http = await listen(app, cfg.port, cfg.host);
+  media.start();
   if (jobs) {
     jobs.start();
     log.info(`Bridge nghe http://${cfg.host}:${cfg.port} (/tg/webhook, /mcp, /job-mcp) · BRIEF_HANDLER=claude: brief chạy bằng \`${cfg.jobs!.bin} -p\` với connector claude.ai`);
@@ -71,6 +77,7 @@ async function main(): Promise<void> {
     void stopPolling?.(); // không chờ: getUpdates đang treo tối đa 25s; offset chưa xác nhận sẽ được gửi lại, update trùng bị chặn
     forwarder.stop();
     jobs?.stop(); // dừng tiến trình claude đang chạy; lần khởi động sau báo "/retry"
+    media.close();
     http.close();
     store.close();
     process.exit(0);

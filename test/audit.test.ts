@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { auditCalls, graphqlRootFields, readToolCalls, transcriptPath, type ToolCall } from '../src/bridge/jobs/audit.ts';
-import { allowedToolsFor, disallowedToolsFor, mediaViaShopify } from '../src/bridge/jobs/prompts.ts';
+import { allowedToolsFor, disallowedToolsFor, mediaViaBridge } from '../src/bridge/jobs/prompts.ts';
 
 const SM = 'mcp__claude_ai_Shopify__graphql_mutation';
 const call = (name: string, input: Record<string, unknown>, result?: string): ToolCall => ({ id: Math.random().toString(36), name, input, result });
@@ -76,18 +76,16 @@ test('readToolCalls + transcriptPath: đọc tool_use và tool_result, bỏ dòn
   assert.equal(readToolCalls(path.join(cfg, 'nope.jsonl')), null);
 });
 
-test('quyền graphql_mutation: chỉ lượt create chạy thật; prompt hướng dẫn Shopify Files', () => {
-  assert.ok(allowedToolsFor('create').includes(SM));
-  assert.ok(!disallowedToolsFor('create').includes(SM));
-  for (const k of ['edit', 'activate', 'cancel'] as const) {
-    assert.ok(!allowedToolsFor(k).includes(SM), k);
-    assert.ok(disallowedToolsFor(k).includes(SM), k);
+test('media staging: chỉ create thật có tool cache; Shopify không còn quyền ghi', () => {
+  for (const kind of ['create', 'edit', 'activate', 'cancel'] as const) {
+    assert.ok(!allowedToolsFor(kind).includes(SM));
+    assert.ok(disallowedToolsFor(kind).includes(SM));
+    assert.equal(allowedToolsFor(kind).includes('mcp__adsjob__stage_drive_media'), kind === 'create');
   }
-  assert.ok(!allowedToolsFor('create', true).includes(SM), 'chạy thử không được ghi Shopify');
-  const t = mediaViaShopify(12);
-  assert.match(t, /fileCreate/);
-  assert.match(t, /KHÔNG truyền filename/);
-  assert.match(t, /cdn\.shopify\.com/);
-  assert.match(t, /fileDelete/);
-  assert.match(t, /ads-brief-12/);
+  assert.ok(!allowedToolsFor('create', true).includes('mcp__adsjob__stage_drive_media'));
+  const prompt = mediaViaBridge(12);
+  assert.match(prompt, /stage_drive_media/);
+  assert.match(prompt, /upload_source "URL"/);
+  assert.match(prompt, /ffprobe|width/);
+  assert.doesNotMatch(prompt, /graphql_mutation/);
 });

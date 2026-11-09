@@ -10,6 +10,7 @@ import { JOB_TOOLS } from './prompts.ts';
 import { activationShape, budgetShape, cancelShape, checkCopyShape, choiceShape, draftsShape, failureShape } from './validate.ts';
 import type { ActivationPayload, CancelPayload, DraftsPayload, FailurePayload } from './validate.ts';
 import type { CopyVariant } from '../../agent/copy/rules.ts';
+import { MediaError } from '../media.ts';
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 const ok = (data: unknown): ToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data) }] });
@@ -28,6 +29,14 @@ export function buildJobMcpServer(m: JobManager, a: ActiveRun): McpServer {
       }
     });
   };
+
+  reg('stage_drive_media', {
+    title: 'Stage media từ Drive', description: 'Tải file vào cache bridge, trả link HTTPS tạm và metadata ffprobe; không ghi lên Meta. Chỉ lượt create chạy thật.',
+    inputSchema: { file_id: z.string().regex(/^[A-Za-z0-9_-]{10,200}$/), ttl_hours: z.number().positive().max(24).optional() },
+  }, async ({ file_id, ttl_hours }) => {
+    try { return ok(await m.stageMedia(a, file_id, ttl_hours)); }
+    catch (error) { return bad({ error: error instanceof MediaError ? error.code : 'download_failed', message: error instanceof MediaError ? error.message : 'Không tải được media từ Drive.' }); }
+  });
 
   reg(
     'get_job',
